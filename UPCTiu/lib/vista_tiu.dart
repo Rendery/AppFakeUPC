@@ -6,6 +6,7 @@ import 'dart:math';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'fuentes.dart';
+import 'perfil.dart';
 import 'vista_configuracion.dart';
 
 class VistaTIU extends StatefulWidget {
@@ -18,32 +19,21 @@ class VistaTIU extends StatefulWidget {
 }
 
 class _VistaTIUState extends State<VistaTIU> {
-  // Variables de estado con valores por defecto
-  String _userName = 'EDERY RENZO A*** V***';
-  String _userCode = '201822832';
-  String _idBanner = 'N01864219';
-  double _nameFontSize = 32.0;
-  double _descFontSize = 18.0;
-  String? _imagePath;
+  static const Color _rojo = Color(0xFFE33E3E);
+  static const Color _textoOscuro = Color(0xFF344563);
+  static const Color _textoGris = Color(0xFF6B778C);
+
+  // null = la app todavía no tiene datos (recién instalada o después de borrarlos)
+  Perfil? _perfil;
   // Se resuelve una sola vez (no en cada build) para no hacer IO síncrono al dibujar.
   File? _imageFile;
 
   @override
   void initState() {
     super.initState();
-    _loadSavedData();
-  }
-
-  // Cargar datos de SharedPreferences (ya vienen cargados desde main, es síncrono)
-  void _loadSavedData() {
-    final prefs = widget.prefs;
-    _userName = prefs.getString('userName') ?? _userName;
-    _userCode = prefs.getString('userCode') ?? _userCode;
-    _idBanner = prefs.getString('idBanner') ?? _idBanner;
-    _nameFontSize = prefs.getDouble('nameFontSize') ?? _nameFontSize;
-    _descFontSize = prefs.getDouble('descFontSize') ?? _descFontSize;
-    _imagePath = prefs.getString('imagePath');
-    _imageFile = _resolverFoto(_imagePath);
+    // Las preferencias ya vienen cargadas desde main, así que esto es síncrono
+    _perfil = PerfilStore.leerActual(widget.prefs);
+    _imageFile = _resolverFoto(_perfil?.imagePath);
   }
 
   File? _resolverFoto(String? path) {
@@ -52,52 +42,42 @@ class _VistaTIUState extends State<VistaTIU> {
     return file.existsSync() ? file : null;
   }
 
-  // Guardar datos en SharedPreferences
-  Future<void> _saveData() async {
-    final prefs = widget.prefs;
-    await prefs.setString('userName', _userName);
-    await prefs.setString('userCode', _userCode);
-    await prefs.setString('idBanner', _idBanner);
-    await prefs.setDouble('nameFontSize', _nameFontSize);
-    await prefs.setDouble('descFontSize', _descFontSize);
-
-    // CORRECCIÓN: Si es nulo, eliminamos el registro para que de verdad vuelva al de fábrica
-    if (_imagePath != null && _imagePath!.isNotEmpty) {
-      await prefs.setString('imagePath', _imagePath!);
-    } else {
-      await prefs.remove('imagePath');
-    }
+  void _aplicarPerfil(Perfil? perfil) {
+    setState(() {
+      _perfil = perfil;
+      _imageFile = _resolverFoto(perfil?.imagePath);
+    });
+    PerfilStore.guardarActual(widget.prefs, perfil);
   }
 
   Future<void> _navigateToConfig() async {
-    final result = await Navigator.push(
+    final result = await Navigator.push<Perfil>(
       context,
       MaterialPageRoute(
-        builder: (context) => VistaConfiguracion(
-          initialName: _userName,
-          initialCode: _userCode,
-          initialIdBanner: _idBanner,
-          initialNameSize: _nameFontSize,
-          initialDescSize: _descFontSize,
-          initialImagePath: _imagePath,
-        ),
+        builder: (context) => VistaConfiguracion(prefs: widget.prefs, inicial: _perfil),
       ),
     );
+    if (result == null) return; // Cerró sin aplicar
+    _aplicarPerfil(result.estaVacio ? null : result);
+  }
 
-    // CORRECCIÓN AL RECIBIR LOS DATOS
-    if (result != null && result is Map<String, dynamic>) {
-      setState(() {
-        _userName = result['name'] ?? _userName;
-        _userCode = result['code'] ?? _userCode;
-        _idBanner = result['idBanner'] ?? _idBanner;
-        _nameFontSize = result['nameSize'] ?? _nameFontSize;
-        _descFontSize = result['descSize'] ?? _descFontSize;
-
-        // El problema estaba aquí. Ahora forzamos a que acepte el null si viene en el mapa
-        _imagePath = result['imagePath'];
-        _imageFile = _resolverFoto(_imagePath);
-      });
-      _saveData();
+  // Importa un archivo de perfiles: se guardan todos y el primero pasa a ser el TIU actual
+  Future<void> _importarPerfil() async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final importados = await PerfilArchivo.importar();
+      if (importados == null || !mounted) return;
+      final guardados = PerfilStore.leerGuardados(widget.prefs)..addAll(importados);
+      await PerfilStore.guardarGuardados(widget.prefs, guardados);
+      _aplicarPerfil(importados.first);
+      messenger.showSnackBar(SnackBar(
+        content: Text(importados.length == 1
+            ? 'Perfil "${importados.first.nombrePerfil}" importado'
+            : 'Se importaron ${importados.length} perfiles'),
+        backgroundColor: Colors.green,
+      ));
+    } on FormatException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message), backgroundColor: Colors.redAccent));
     }
   }
 
@@ -109,6 +89,7 @@ class _VistaTIUState extends State<VistaTIU> {
     // Decodificamos la foto al tamaño en que se muestra (175 dp), no a resolución completa:
     // una foto de galería de 12 MP tardaba muchísimo en decodificarse al abrir.
     final photoCacheSize = (175 * dpr).round();
+    final perfil = _perfil;
 
     return Scaffold(
       backgroundColor: const Color(0xFFFBFBFB),
@@ -141,7 +122,7 @@ class _VistaTIUState extends State<VistaTIU> {
                     children: [
                       GestureDetector(
                         onTap: _navigateToConfig,
-                        child: const Icon(Icons.arrow_back_ios_new, color: Color(0xFFE33E3E), size: 22),
+                        child: const Icon(Icons.arrow_back_ios_new, color: _rojo, size: 22),
                       ),
                       const SizedBox(width: 25),
                       Text(
@@ -182,52 +163,7 @@ class _VistaTIUState extends State<VistaTIU> {
                 borderRadius: BorderRadius.circular(25),
                 border: Border.all(color: Colors.black.withOpacity(0.05)),
               ),
-              child: Column(
-                children: [
-                  const SizedBox(height: 10),
-                  FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(
-                      _userName,
-                      textAlign: TextAlign.center,
-                      style: oswald(
-                        fontSize: _nameFontSize,
-                        color: const Color(0xFFE33E3E),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 15),
-                  const Text("Código de alumno:", style: TextStyle(color: Color(0xFF6B778C), fontSize: 13)),
-                  Text(
-                    _userCode,
-                    style: TextStyle(fontSize: _descFontSize, fontWeight: FontWeight.bold, color: const Color(0xFF344563)),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text("ID Banner:", style: TextStyle(color: Color(0xFF6B778C), fontSize: 13)),
-                  Text(
-                    _idBanner,
-                    style: TextStyle(fontSize: _descFontSize, fontWeight: FontWeight.bold, color: const Color(0xFF344563)),
-                  ),
-                  const SizedBox(height: 18),
-                  Text(
-                    "INGENIERÍA DE SOFTWARE",
-                    style: TextStyle(fontSize: _descFontSize, fontWeight: FontWeight.w800, color: const Color(0xFF344563)),
-                  ),
-                  const SizedBox(height: 8),
-                  const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.location_on, color: Color(0xFFE33E3E), size: 19),
-                      SizedBox(width: 8),
-                      Text(
-                        "Campus San Miguel",
-                        style: TextStyle(fontSize: 15, color: Color(0xFF6B778C), fontWeight: FontWeight.w500),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+              child: perfil == null ? _buildSinDatos() : _buildDatos(perfil),
             ),
           ),
           Positioned(
@@ -244,18 +180,116 @@ class _VistaTIUState extends State<VistaTIU> {
                   cacheWidth: photoCacheSize,
                   fit: BoxFit.cover,
                 )
-                    : Image.asset(
-                  'assets/profile_picture.jpg',
+                    : Container(
                   width: 175,
                   height: 175,
-                  cacheWidth: photoCacheSize,
-                  fit: BoxFit.cover,
+                  color: const Color(0xFFE9ECF1),
+                  child: const Icon(Icons.person, size: 110, color: Color(0xFFB7BFCC)),
                 ),
               ),
             ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildDatos(Perfil perfil) {
+    final descStyle = TextStyle(fontSize: perfil.descSize, fontWeight: FontWeight.bold, color: _textoOscuro);
+    return Column(
+      children: [
+        const SizedBox(height: 10),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            perfil.nombre,
+            textAlign: TextAlign.center,
+            style: oswald(
+              fontSize: perfil.nameSize,
+              color: _rojo,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        const SizedBox(height: 15),
+        const Text("Código de alumno:", style: TextStyle(color: _textoGris, fontSize: 13)),
+        Text(perfil.codigo, style: descStyle),
+        const SizedBox(height: 8),
+        const Text("ID Banner:", style: TextStyle(color: _textoGris, fontSize: 13)),
+        Text(perfil.idBanner, style: descStyle),
+        const SizedBox(height: 18),
+        Text(
+          perfil.carrera,
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: perfil.descSize, fontWeight: FontWeight.w800, color: _textoOscuro),
+        ),
+        if (perfil.campus.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.location_on, color: _rojo, size: 19),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  perfil.campus,
+                  style: const TextStyle(fontSize: 15, color: _textoGris, fontWeight: FontWeight.w500),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+
+  // Estado inicial de la APK: sin datos, esperando que el usuario los ingrese o importe
+  Widget _buildSinDatos() {
+    return Column(
+      children: [
+        const SizedBox(height: 10),
+        Text(
+          'TU TIU ESTÁ VACÍO',
+          textAlign: TextAlign.center,
+          style: oswald(fontSize: 26, color: _rojo, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 10),
+        const Text(
+          'Ingresa tu nombre, foto, código, ID Banner y carrera, o importa un perfil que hayas guardado.',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 14, color: _textoGris),
+        ),
+        const SizedBox(height: 18),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            icon: const Icon(Icons.edit),
+            label: const Text('Ingresar datos'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _rojo,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+            ),
+            onPressed: _navigateToConfig,
+          ),
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            icon: const Icon(Icons.file_open_outlined),
+            label: const Text('Importar perfil'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: _rojo,
+              side: const BorderSide(color: _rojo),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+            ),
+            onPressed: _importarPerfil,
+          ),
+        ),
+      ],
     );
   }
 }

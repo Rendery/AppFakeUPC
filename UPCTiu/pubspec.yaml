@@ -15,6 +15,7 @@ dependencies:
   image_picker: ^1.1.2
   shared_preferences: ^2.2.2  # <-- NUEVO
   path_provider: ^2.1.2       # <-- NUEVO
+  file_picker: ^13.3.0
 
 dev_dependencies:
   flutter_test:
@@ -33,6 +34,5 @@ flutter:
   assets:
     # Poppins empaquetada: google_fonts la toma de aquí sin descargar nada
     - assets/google_fonts/
-    - assets/profile_picture.jpg
     - assets/cloud.png
     - assets/arbolito.png

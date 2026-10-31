@@ -1,24 +1,89 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:upctiu/main.dart';
+import 'package:upctiu/perfil.dart';
 
 void main() {
-  testWidgets('La pantalla TIU muestra los datos por defecto', (WidgetTester tester) async {
-    SharedPreferences.setMockInitialValues({});
-    final prefs = await SharedPreferences.getInstance();
-    await initializeDateFormatting('es_ES', null);
+  setUpAll(() => initializeDateFormatting('es_ES', null));
 
+  Future<void> abrirApp(WidgetTester tester, Map<String, Object> datos) async {
+    SharedPreferences.setMockInitialValues(datos);
+    final prefs = await SharedPreferences.getInstance();
     await tester.pumpWidget(MyApp(prefs: prefs));
+  }
+
+  testWidgets('Sin datos guardados el TIU arranca vacío', (WidgetTester tester) async {
+    await abrirApp(tester, {});
 
     expect(find.text('TIU VIRTUAL'), findsOneWidget);
-    expect(find.text('EDERY RENZO A*** V***'), findsOneWidget);
-    expect(find.text('201822832'), findsOneWidget);
-    expect(find.text('N01864219'), findsOneWidget);
+    expect(find.text('TU TIU ESTÁ VACÍO'), findsOneWidget);
+    expect(find.text('Ingresar datos'), findsOneWidget);
+    expect(find.text('Importar perfil'), findsOneWidget);
 
     // Desmonta la pantalla para que se cancelen los timers del reloj.
     await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('Con datos guardados el TIU muestra el perfil', (WidgetTester tester) async {
+    await abrirApp(tester, {
+      'userName': 'ANA PÉREZ',
+      'userCode': '202312345',
+      'idBanner': 'N00000001',
+      'carrera': 'ARQUITECTURA',
+      'campus': 'Campus Monterrico',
+    });
+
+    expect(find.text('ANA PÉREZ'), findsOneWidget);
+    expect(find.text('202312345'), findsOneWidget);
+    expect(find.text('N00000001'), findsOneWidget);
+    expect(find.text('ARQUITECTURA'), findsOneWidget);
+    expect(find.text('Campus Monterrico'), findsOneWidget);
+    expect(find.text('TU TIU ESTÁ VACÍO'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  test('Exportar e importar un perfil conserva sus datos', () async {
+    const original = Perfil(
+      id: 'x',
+      nombrePerfil: 'Principal',
+      nombre: 'ANA PÉREZ',
+      codigo: '202312345',
+      idBanner: 'N00000001',
+      carrera: 'ARQUITECTURA',
+      campus: 'Campus Monterrico',
+      nameSize: 30,
+      descSize: 16,
+    );
+
+    final bytes = await PerfilArchivo.codificar([original]);
+    final importados = await PerfilArchivo.decodificar(bytes);
+
+    expect(importados, hasLength(1));
+    final p = importados.single;
+    expect(p.nombrePerfil, 'Principal');
+    expect(p.nombre, 'ANA PÉREZ');
+    expect(p.codigo, '202312345');
+    expect(p.idBanner, 'N00000001');
+    expect(p.carrera, 'ARQUITECTURA');
+    expect(p.campus, 'Campus Monterrico');
+    expect(p.nameSize, 30);
+    expect(p.descSize, 16);
+    expect(p.imagePath, isNull);
+    expect(p.id, isNotEmpty);
+  });
+
+  test('Importar un archivo que no es de la app falla con un mensaje', () async {
+    final otro = Uint8List.fromList(utf8.encode('{"hola": 1}'));
+    expect(() => PerfilArchivo.decodificar(otro), throwsFormatException);
+
+    final roto = Uint8List.fromList(utf8.encode('no es json'));
+    expect(() => PerfilArchivo.decodificar(roto), throwsFormatException);
   });
 }

@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // Importante para las mayúsculas automáticas
 import 'package:image_picker/image_picker.dart';
@@ -7,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'fuentes.dart';
+import 'perfil.dart';
 
 // --- FORMATTER PARA MAYÚSCULAS AUTOMÁTICAS ---
 class UpperCaseTextFormatter extends TextInputFormatter {
@@ -19,67 +19,15 @@ class UpperCaseTextFormatter extends TextInputFormatter {
   }
 }
 
-// --- MODELO DE DATOS PARA LA PLANTILLA ---
-class PerfilPlantilla {
-  final String id;
-  final String nombrePlantilla;
-  final String nombre;
-  final String codigo;
-  final String idBanner;
-  final double nameSize;
-  final double descSize;
-  final String? imagePath;
-
-  PerfilPlantilla({
-    required this.id,
-    required this.nombrePlantilla,
-    required this.nombre,
-    required this.codigo,
-    required this.idBanner,
-    required this.nameSize,
-    required this.descSize,
-    this.imagePath,
-  });
-
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'nombrePlantilla': nombrePlantilla,
-    'nombre': nombre,
-    'codigo': codigo,
-    'idBanner': idBanner,
-    'nameSize': nameSize,
-    'descSize': descSize,
-    'imagePath': imagePath,
-  };
-
-  factory PerfilPlantilla.fromJson(Map<String, dynamic> json) => PerfilPlantilla(
-    id: json['id'],
-    nombrePlantilla: json['nombrePlantilla'],
-    nombre: json['nombre'],
-    codigo: json['codigo'],
-    idBanner: json['idBanner'],
-    nameSize: json['nameSize'],
-    descSize: json['descSize'],
-    imagePath: json['imagePath'],
-  );
-}
-
 class VistaConfiguracion extends StatefulWidget {
-  final String initialName;
-  final String initialCode;
-  final String initialIdBanner;
-  final double initialNameSize;
-  final double initialDescSize;
-  final String? initialImagePath;
+  final SharedPreferences prefs;
+  // Perfil que se muestra ahora en el TIU; null si la app todavía no tiene datos
+  final Perfil? inicial;
 
   const VistaConfiguracion({
     super.key,
-    required this.initialName,
-    required this.initialCode,
-    required this.initialIdBanner,
-    required this.initialNameSize,
-    required this.initialDescSize,
-    this.initialImagePath,
+    required this.prefs,
+    this.inicial,
   });
 
   @override
@@ -87,16 +35,19 @@ class VistaConfiguracion extends StatefulWidget {
 }
 
 class _VistaConfiguracionState extends State<VistaConfiguracion> {
+  final _formKey = GlobalKey<FormState>();
   late TextEditingController _nameController;
   late TextEditingController _codeController;
   late TextEditingController _idBannerController;
+  late TextEditingController _carreraController;
+  late TextEditingController _campusController;
 
   late double _nameSize;
   late double _descSize;
   File? _selectedImage;
 
   final ImagePicker _picker = ImagePicker();
-  List<PerfilPlantilla> _plantillas = [];
+  List<Perfil> _perfiles = [];
 
   final Color primaryRed = const Color(0xFFE33E3E);
   final Color backgroundColor = const Color(0xFFF4F6F9);
@@ -104,17 +55,20 @@ class _VistaConfiguracionState extends State<VistaConfiguracion> {
   @override
   void initState() {
     super.initState();
-    _nameController = TextEditingController(text: widget.initialName);
-    _codeController = TextEditingController(text: widget.initialCode);
-    _idBannerController = TextEditingController(text: widget.initialIdBanner);
-    _nameSize = widget.initialNameSize;
-    _descSize = widget.initialDescSize;
+    final perfil = widget.inicial ?? const Perfil();
+    _nameController = TextEditingController(text: perfil.nombre);
+    _codeController = TextEditingController(text: perfil.codigo);
+    _idBannerController = TextEditingController(text: perfil.idBanner);
+    _carreraController = TextEditingController(text: perfil.carrera);
+    _campusController = TextEditingController(text: perfil.campus);
+    _nameSize = perfil.nameSize;
+    _descSize = perfil.descSize;
 
-    if (widget.initialImagePath != null && widget.initialImagePath!.isNotEmpty) {
-      _selectedImage = File(widget.initialImagePath!);
+    if (perfil.imagePath != null && perfil.imagePath!.isNotEmpty) {
+      _selectedImage = File(perfil.imagePath!);
     }
 
-    _cargarPlantillas();
+    _perfiles = PerfilStore.leerGuardados(widget.prefs);
   }
 
   @override
@@ -122,38 +76,63 @@ class _VistaConfiguracionState extends State<VistaConfiguracion> {
     _nameController.dispose();
     _codeController.dispose();
     _idBannerController.dispose();
+    _carreraController.dispose();
+    _campusController.dispose();
     super.dispose();
   }
 
-  // --- LÓGICA DE PLANTILLAS ---
-  Future<void> _cargarPlantillas() async {
-    final prefs = await SharedPreferences.getInstance();
-    final List<String>? plantillasJson = prefs.getStringList('plantillasGuardadas');
-
-    if (plantillasJson != null && mounted) {
-      setState(() {
-        _plantillas = plantillasJson
-            .map((jsonStr) => PerfilPlantilla.fromJson(jsonDecode(jsonStr)))
-            .toList();
-      });
-    }
+  Perfil _perfilDelFormulario({String id = '', String nombrePerfil = ''}) {
+    return Perfil(
+      id: id,
+      nombrePerfil: nombrePerfil,
+      nombre: _nameController.text.trim().toUpperCase(),
+      codigo: _codeController.text.trim(),
+      idBanner: _idBannerController.text.trim().toUpperCase(),
+      carrera: _carreraController.text.trim().toUpperCase(),
+      campus: _campusController.text.trim(),
+      nameSize: _nameSize,
+      descSize: _descSize,
+      imagePath: _selectedImage?.path,
+    );
   }
 
-  Future<void> _guardarPlantillasEnMemoria() async {
-    final prefs = await SharedPreferences.getInstance();
-    final List<String> plantillasJson = _plantillas.map((p) => jsonEncode(p.toJson())).toList();
-    await prefs.setStringList('plantillasGuardadas', plantillasJson);
+  void _mostrarMensaje(String texto, {bool error = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(texto), backgroundColor: error ? Colors.redAccent : Colors.green),
+    );
   }
 
-  void _dialogoCrearPlantilla() {
-    TextEditingController nombrePlantillaController = TextEditingController();
+  Future<bool> _confirmar(String titulo, String mensaje, String accion) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(titulo),
+        content: Text(mensaje),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: primaryRed, foregroundColor: Colors.white),
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(accion),
+          ),
+        ],
+      ),
+    );
+    return ok ?? false;
+  }
+
+  // --- LÓGICA DE PERFILES GUARDADOS ---
+  Future<void> _guardarPerfilesEnMemoria() => PerfilStore.guardarGuardados(widget.prefs, _perfiles);
+
+  void _dialogoCrearPerfil() {
+    TextEditingController nombrePerfilController = TextEditingController();
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Nombrar Plantilla'),
+        title: const Text('Nombrar Perfil'),
         content: TextField(
-          controller: nombrePlantillaController,
+          controller: nombrePerfilController,
           textCapitalization: TextCapitalization.words,
           decoration: const InputDecoration(hintText: "Ej. Perfil Principal, Amigo 1..."),
           autofocus: true,
@@ -163,8 +142,8 @@ class _VistaConfiguracionState extends State<VistaConfiguracion> {
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: primaryRed, foregroundColor: Colors.white),
             onPressed: () {
-              if (nombrePlantillaController.text.isNotEmpty) {
-                _guardarConfiguracionComoPlantilla(nombrePlantillaController.text);
+              if (nombrePerfilController.text.trim().isNotEmpty) {
+                _guardarConfiguracionComoPerfil(nombrePerfilController.text.trim());
                 Navigator.pop(context);
               }
             },
@@ -175,130 +154,192 @@ class _VistaConfiguracionState extends State<VistaConfiguracion> {
     );
   }
 
-  void _guardarConfiguracionComoPlantilla(String nombrePlantilla) {
-    final nuevaPlantilla = PerfilPlantilla(
+  void _guardarConfiguracionComoPerfil(String nombrePerfil) {
+    final nuevoPerfil = _perfilDelFormulario(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
-      nombrePlantilla: nombrePlantilla,
-      nombre: _nameController.text,
-      codigo: _codeController.text,
-      idBanner: _idBannerController.text,
-      nameSize: _nameSize,
-      descSize: _descSize,
-      imagePath: _selectedImage?.path,
+      nombrePerfil: nombrePerfil,
     );
 
     setState(() {
-      _plantillas.add(nuevaPlantilla);
+      _perfiles.add(nuevoPerfil);
     });
 
-    _guardarPlantillasEnMemoria();
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Plantilla "$nombrePlantilla" guardada'), backgroundColor: Colors.green),
-    );
+    _guardarPerfilesEnMemoria();
+    _mostrarMensaje('Perfil "$nombrePerfil" guardado');
   }
 
-  void _cargarDatosDePlantilla(PerfilPlantilla plantilla) {
+  void _cargarDatosDePerfil(Perfil perfil) {
     setState(() {
-      _nameController.text = plantilla.nombre;
-      _codeController.text = plantilla.codigo;
-      _idBannerController.text = plantilla.idBanner;
-      _nameSize = plantilla.nameSize;
-      _descSize = plantilla.descSize;
-      if (plantilla.imagePath != null && File(plantilla.imagePath!).existsSync()) {
-        _selectedImage = File(plantilla.imagePath!);
+      _nameController.text = perfil.nombre;
+      _codeController.text = perfil.codigo;
+      _idBannerController.text = perfil.idBanner;
+      _carreraController.text = perfil.carrera;
+      _campusController.text = perfil.campus;
+      _nameSize = perfil.nameSize;
+      _descSize = perfil.descSize;
+      if (perfil.imagePath != null && File(perfil.imagePath!).existsSync()) {
+        _selectedImage = File(perfil.imagePath!);
       } else {
         _selectedImage = null;
       }
     });
-    Navigator.pop(context); // Cierra el modal de selección
   }
 
-  void _eliminarPlantilla(String id) {
+  Future<void> _eliminarPerfil(Perfil perfil) async {
+    final ok = await _confirmar('Eliminar perfil', '¿Eliminar "${perfil.nombrePerfil}"?', 'Eliminar');
+    if (!ok) return;
     setState(() {
-      _plantillas.removeWhere((p) => p.id == id);
+      _perfiles.removeWhere((p) => p.id == perfil.id);
     });
-    _guardarPlantillasEnMemoria();
+    _guardarPerfilesEnMemoria();
   }
 
-  void _mostrarGestorPlantillas() {
+  Future<void> _exportar(List<Perfil> perfiles, String nombreArchivo) async {
+    try {
+      final guardado = await PerfilArchivo.exportar(perfiles, nombreArchivo);
+      if (guardado && mounted) {
+        _mostrarMensaje(perfiles.length == 1 ? 'Perfil exportado' : '${perfiles.length} perfiles exportados');
+      }
+    } catch (e) {
+      if (mounted) _mostrarMensaje('No se pudo exportar: $e', error: true);
+    }
+  }
+
+  Future<void> _importar() async {
+    try {
+      final importados = await PerfilArchivo.importar();
+      if (importados == null || !mounted) return;
+      setState(() {
+        _perfiles.addAll(importados);
+      });
+      await _guardarPerfilesEnMemoria();
+      if (!mounted) return;
+      _mostrarMensaje(importados.length == 1
+          ? 'Perfil "${importados.first.nombrePerfil}" importado. Tócalo para cargarlo.'
+          : 'Se importaron ${importados.length} perfiles. Toca uno para cargarlo.');
+    } on FormatException catch (e) {
+      if (mounted) _mostrarMensaje(e.message, error: true);
+    } catch (e) {
+      if (mounted) _mostrarMensaje('No se pudo importar: $e', error: true);
+    }
+  }
+
+  ImageProvider? _miniatura(String? path) {
+    if (path == null || !File(path).existsSync()) return null;
+    return ResizeImage(FileImage(File(path)), width: 120);
+  }
+
+  void _mostrarGestorPerfiles() {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       backgroundColor: Colors.white,
+      constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.8),
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (context) {
         return StatefulBuilder(
             builder: (BuildContext context, StateSetter setModalState) {
-              // Creamos la lista combinando la de por defecto + las guardadas
-              final List<PerfilPlantilla> listaMostrada = [
-                PerfilPlantilla(
-                  id: 'default',
-                  nombrePlantilla: 'Por Defecto (Fábrica)',
-                  nombre: 'EDERY RENZO A*** V***',
-                  codigo: '201822832',
-                  idBanner: 'N01864219',
-                  nameSize: 32.0,
-                  descSize: 18.0,
-                  imagePath: null,
-                ),
-                ..._plantillas
-              ];
+              return SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text("Perfiles Guardados", style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold)),
+                      const Divider(),
+                      if (_perfiles.isEmpty)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 24),
+                          child: Text(
+                            "Todavía no tienes perfiles.\nGuarda tus datos actuales o importa un archivo.",
+                            textAlign: TextAlign.center,
+                            style: GoogleFonts.poppins(color: Colors.grey[600]),
+                          ),
+                        )
+                      else
+                        Flexible(
+                          child: ListView.builder(
+                            shrinkWrap: true,
+                            itemCount: _perfiles.length,
+                            itemBuilder: (context, index) {
+                              final p = _perfiles[index];
+                              final foto = _miniatura(p.imagePath);
 
-              return Container(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text("Plantillas Guardadas", style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold)),
-                    const Divider(),
-                    Expanded(
-                      child: ListView.builder(
-                        shrinkWrap: true,
-                        itemCount: listaMostrada.length,
-                        itemBuilder: (context, index) {
-                          final p = listaMostrada[index];
-                          final bool esPorDefecto = p.id == 'default';
-
-                          return ListTile(
-                            leading: CircleAvatar(
-                              backgroundColor: esPorDefecto ? Colors.orange[100] : Colors.grey[200],
-                              backgroundImage: p.imagePath != null ? FileImage(File(p.imagePath!)) : null,
-                              child: p.imagePath == null
-                                  ? Icon(esPorDefecto ? Icons.factory : Icons.person, color: esPorDefecto ? Colors.orange : Colors.grey)
-                                  : null,
-                            ),
-                            title: Text(
-                                p.nombrePlantilla,
-                                style: TextStyle(fontWeight: FontWeight.bold, color: esPorDefecto ? Colors.orange[800] : Colors.black87)
-                            ),
-                            subtitle: Text(p.nombre, maxLines: 1, overflow: TextOverflow.ellipsis),
-                            onTap: () => _cargarDatosDePlantilla(p),
-                            trailing: esPorDefecto
-                                ? const Icon(Icons.check_circle, color: Colors.orange) // No se puede borrar la default
-                                : IconButton(
-                              icon: const Icon(Icons.delete, color: Colors.redAccent),
-                              onPressed: () {
-                                setModalState(() => _eliminarPlantilla(p.id));
-                                setState(() {});
+                              return ListTile(
+                                contentPadding: EdgeInsets.zero,
+                                leading: CircleAvatar(
+                                  backgroundColor: Colors.grey[200],
+                                  backgroundImage: foto,
+                                  child: foto == null ? const Icon(Icons.person, color: Colors.grey) : null,
+                                ),
+                                title: Text(p.nombrePerfil, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
+                                subtitle: Text(p.nombre, maxLines: 1, overflow: TextOverflow.ellipsis),
+                                onTap: () {
+                                  _cargarDatosDePerfil(p);
+                                  Navigator.pop(context);
+                                },
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      icon: const Icon(Icons.file_download_outlined, color: Colors.blueGrey),
+                                      tooltip: "Exportar",
+                                      onPressed: () => _exportar([p], PerfilArchivo.nombreArchivoPara(p.nombrePerfil)),
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.delete, color: Colors.redAccent),
+                                      tooltip: "Eliminar",
+                                      onPressed: () async {
+                                        await _eliminarPerfil(p);
+                                        setModalState(() {});
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          icon: const Icon(Icons.add),
+                          label: const Text("Guardar datos actuales como perfil"),
+                          style: ElevatedButton.styleFrom(backgroundColor: primaryRed, foregroundColor: Colors.white),
+                          onPressed: () {
+                            Navigator.pop(context);
+                            _dialogoCrearPerfil();
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              icon: const Icon(Icons.file_open_outlined),
+                              label: const Text("Importar"),
+                              style: OutlinedButton.styleFrom(foregroundColor: primaryRed),
+                              onPressed: () async {
+                                await _importar();
+                                setModalState(() {});
                               },
                             ),
-                          );
-                        },
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              icon: const Icon(Icons.save_alt),
+                              label: const Text("Exportar todos"),
+                              style: OutlinedButton.styleFrom(foregroundColor: Colors.blueGrey),
+                              onPressed: _perfiles.isEmpty ? null : () => _exportar(_perfiles, 'perfiles_tiu.upctiu.json'),
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        icon: const Icon(Icons.add),
-                        label: const Text("Guardar configuración actual"),
-                        style: ElevatedButton.styleFrom(backgroundColor: primaryRed, foregroundColor: Colors.white),
-                        onPressed: () {
-                          Navigator.pop(context);
-                          _dialogoCrearPlantilla();
-                        },
-                      ),
-                    )
-                  ],
+                    ],
+                  ),
                 ),
               );
             }
@@ -309,7 +350,13 @@ class _VistaConfiguracionState extends State<VistaConfiguracion> {
 
   // --- LÓGICA DE FOTO Y GUARDADO PRINCIPAL ---
   Future<void> _pickAndSaveImage() async {
-    final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
+    // Se reduce al elegirla: la foto se muestra a 175 dp y así también pesa poco al exportar
+    final XFile? image = await _picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 800,
+      maxHeight: 800,
+      imageQuality: 85,
+    );
     if (image != null) {
       final directory = await getApplicationDocumentsDirectory();
       final String newPath = '${directory.path}/profile_${DateTime.now().millisecondsSinceEpoch}.jpg';
@@ -322,15 +369,20 @@ class _VistaConfiguracionState extends State<VistaConfiguracion> {
   }
 
   void _guardarYSalir() {
-    Navigator.pop(context, {
-      'name': _nameController.text.toUpperCase(),
-      'code': _codeController.text,
-      'idBanner': _idBannerController.text,
-      'nameSize': _nameSize,
-      'descSize': _descSize,
-      'imagePath': _selectedImage?.path,
-    });
+    if (!_formKey.currentState!.validate()) return;
+    Navigator.pop(context, _perfilDelFormulario());
   }
+
+  Future<void> _borrarDatos() async {
+    final ok = await _confirmar(
+      'Borrar datos del TIU',
+      'El TIU quedará vacío. Tus perfiles guardados no se borran.',
+      'Borrar',
+    );
+    if (ok && mounted) Navigator.pop(context, const Perfil());
+  }
+
+  String? _requerido(String? valor) => (valor == null || valor.trim().isEmpty) ? 'Este dato es obligatorio' : null;
 
   @override
   Widget build(BuildContext context) {
@@ -354,126 +406,164 @@ class _VistaConfiguracionState extends State<VistaConfiguracion> {
           SafeArea(
             child: SingleChildScrollView(
               padding: const EdgeInsets.only(top: 80, left: 20, right: 20, bottom: 40),
-              child: Column(
-                children: [
-                  Center(
-                    child: Stack(
-                      alignment: Alignment.bottomRight,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(4),
-                          decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-                          child: CircleAvatar(
-                            radius: 65,
-                            backgroundColor: Colors.grey[200],
-                            backgroundImage: _selectedImage != null
-                                ? ResizeImage(FileImage(_selectedImage!), width: 260)
-                                : const ResizeImage(AssetImage('assets/profile_picture.jpg'), width: 260),
-                          ),
-                        ),
-                        GestureDetector(
-                          onTap: _pickAndSaveImage,
-                          child: Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: primaryRed, shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white, width: 3),
-                              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 8, offset: const Offset(0, 4))],
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  children: [
+                    Center(
+                      child: Stack(
+                        alignment: Alignment.bottomRight,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                            child: CircleAvatar(
+                              radius: 65,
+                              backgroundColor: Colors.grey[200],
+                              backgroundImage: _selectedImage != null
+                                  ? ResizeImage(FileImage(_selectedImage!), width: 260)
+                                  : null,
+                              child: _selectedImage == null
+                                  ? Icon(Icons.person, size: 80, color: Colors.grey[400])
+                                  : null,
                             ),
-                            child: const Icon(Icons.camera_alt, color: Colors.white, size: 22),
                           ),
-                        ),
-                      ],
+                          GestureDetector(
+                            onTap: _pickAndSaveImage,
+                            child: Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: primaryRed, shape: BoxShape.circle,
+                                border: Border.all(color: Colors.white, width: 3),
+                                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 8, offset: const Offset(0, 4))],
+                              ),
+                              child: const Icon(Icons.camera_alt, color: Colors.white, size: 22),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 30),
+                    const SizedBox(height: 30),
 
-                  _buildCardSection(
-                    title: "Datos del Estudiante",
-                    icon: Icons.person_outline,
-                    child: Column(
-                      children: [
-                        _buildCustomTextField(
-                          controller: _nameController,
-                          label: "Nombre Completo",
-                          icon: Icons.badge_outlined,
-                          textCapitalization: TextCapitalization.characters, // Mayúsculas automáticas teclado
-                          inputFormatters: [UpperCaseTextFormatter()], // Fuerza mayúsculas en pegado/código
-                        ),
-                        const SizedBox(height: 15),
-                        _buildCustomTextField(
+                    _buildCardSection(
+                      title: "Datos del Estudiante",
+                      icon: Icons.person_outline,
+                      child: Column(
+                        children: [
+                          _buildCustomTextField(
+                            controller: _nameController,
+                            label: "Nombre Completo",
+                            icon: Icons.badge_outlined,
+                            textCapitalization: TextCapitalization.characters, // Mayúsculas automáticas teclado
+                            inputFormatters: [UpperCaseTextFormatter()], // Fuerza mayúsculas en pegado/código
+                            validator: _requerido,
+                          ),
+                          const SizedBox(height: 15),
+                          _buildCustomTextField(
                             controller: _codeController,
                             label: "Código de Alumno",
                             icon: Icons.numbers,
-                            keyboardType: TextInputType.number
-                        ),
-                        const SizedBox(height: 15),
-                        _buildCustomTextField(
+                            keyboardType: TextInputType.number,
+                            validator: _requerido,
+                          ),
+                          const SizedBox(height: 15),
+                          _buildCustomTextField(
                             controller: _idBannerController,
                             label: "ID Banner",
-                            icon: Icons.credit_card
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-
-                  _buildCardSection(
-                    title: "Apariencia de Textos",
-                    icon: Icons.text_fields,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text("Tamaño del Nombre", style: GoogleFonts.poppins(color: Colors.grey[700])),
-                            Text("${_nameSize.toInt()} pt", style: GoogleFonts.poppins(fontWeight: FontWeight.bold, color: primaryRed)),
-                          ],
-                        ),
-                        SliderTheme(
-                          data: SliderTheme.of(context).copyWith(activeTrackColor: primaryRed, thumbColor: primaryRed, overlayColor: primaryRed.withOpacity(0.2)),
-                          child: Slider(value: _nameSize, min: 15.0, max: 50.0, onChanged: (val) => setState(() => _nameSize = val)),
-                        ),
-                        Center(
-                          child: Text(
-                            _nameController.text.isEmpty ? "VISTA PREVIA" : _nameController.text.toUpperCase(),
-                            style: oswald(color: primaryRed, fontSize: _nameSize, fontWeight: FontWeight.w600),
-                            textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis,
+                            icon: Icons.credit_card,
+                            textCapitalization: TextCapitalization.characters,
+                            inputFormatters: [UpperCaseTextFormatter()],
+                            validator: _requerido,
                           ),
-                        ),
-                        const Padding(padding: EdgeInsets.symmetric(vertical: 15), child: Divider(height: 1)),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text("Tamaño de Descripciones", style: GoogleFonts.poppins(color: Colors.grey[700])),
-                            Text("${_descSize.toInt()} pt", style: GoogleFonts.poppins(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
-                          ],
-                        ),
-                        SliderTheme(
-                          data: SliderTheme.of(context).copyWith(activeTrackColor: Colors.blueGrey, thumbColor: Colors.blueGrey, overlayColor: Colors.blueGrey.withOpacity(0.2)),
-                          child: Slider(value: _descSize, min: 10.0, max: 30.0, onChanged: (val) => setState(() => _descSize = val)),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 40),
-
-                  SizedBox(
-                    width: double.infinity,
-                    height: 55,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: primaryRed,
-                        foregroundColor: Colors.white,
-                        elevation: 5, shadowColor: primaryRed.withOpacity(0.4),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                          const SizedBox(height: 15),
+                          _buildCustomTextField(
+                            controller: _carreraController,
+                            label: "Carrera",
+                            hint: "Ej. INGENIERÍA DE SOFTWARE",
+                            icon: Icons.school_outlined,
+                            textCapitalization: TextCapitalization.characters,
+                            inputFormatters: [UpperCaseTextFormatter()],
+                            validator: _requerido,
+                          ),
+                          const SizedBox(height: 15),
+                          _buildCustomTextField(
+                            controller: _campusController,
+                            label: "Campus (opcional)",
+                            hint: "Ej. Campus San Miguel",
+                            icon: Icons.location_on_outlined,
+                            textCapitalization: TextCapitalization.words,
+                          ),
+                        ],
                       ),
-                      onPressed: _guardarYSalir,
-                      child: Text('APLICAR AL TIU VIRTUAL', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 20),
+
+                    _buildCardSection(
+                      title: "Apariencia de Textos",
+                      icon: Icons.text_fields,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text("Tamaño del Nombre", style: GoogleFonts.poppins(color: Colors.grey[700])),
+                              Text("${_nameSize.toInt()} pt", style: GoogleFonts.poppins(fontWeight: FontWeight.bold, color: primaryRed)),
+                            ],
+                          ),
+                          SliderTheme(
+                            data: SliderTheme.of(context).copyWith(activeTrackColor: primaryRed, thumbColor: primaryRed, overlayColor: primaryRed.withOpacity(0.2)),
+                            child: Slider(value: _nameSize, min: 15.0, max: 50.0, onChanged: (val) => setState(() => _nameSize = val)),
+                          ),
+                          Center(
+                            child: Text(
+                              _nameController.text.isEmpty ? "VISTA PREVIA" : _nameController.text.toUpperCase(),
+                              style: oswald(color: primaryRed, fontSize: _nameSize, fontWeight: FontWeight.w600),
+                              textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const Padding(padding: EdgeInsets.symmetric(vertical: 15), child: Divider(height: 1)),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text("Tamaño de Descripciones", style: GoogleFonts.poppins(color: Colors.grey[700])),
+                              Text("${_descSize.toInt()} pt", style: GoogleFonts.poppins(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+                            ],
+                          ),
+                          SliderTheme(
+                            data: SliderTheme.of(context).copyWith(activeTrackColor: Colors.blueGrey, thumbColor: Colors.blueGrey, overlayColor: Colors.blueGrey.withOpacity(0.2)),
+                            child: Slider(value: _descSize, min: 10.0, max: 30.0, onChanged: (val) => setState(() => _descSize = val)),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 40),
+
+                    SizedBox(
+                      width: double.infinity,
+                      height: 55,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: primaryRed,
+                          foregroundColor: Colors.white,
+                          elevation: 5, shadowColor: primaryRed.withOpacity(0.4),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                        ),
+                        onPressed: _guardarYSalir,
+                        child: Text('APLICAR AL TIU VIRTUAL', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+                      ),
+                    ),
+                    if (widget.inicial != null) ...[
+                      const SizedBox(height: 10),
+                      TextButton.icon(
+                        icon: const Icon(Icons.delete_outline),
+                        label: const Text('Borrar datos del TIU'),
+                        style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
+                        onPressed: _borrarDatos,
+                      ),
+                    ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -503,8 +593,8 @@ class _VistaConfiguracionState extends State<VistaConfiguracion> {
             top: 45, right: 15,
             child: IconButton(
               icon: const Icon(Icons.bookmarks, color: Colors.white, size: 28),
-              tooltip: "Gestor de Plantillas",
-              onPressed: _mostrarGestorPlantillas,
+              tooltip: "Perfiles",
+              onPressed: _mostrarGestorPerfiles,
             ),
           ),
         ],
@@ -538,18 +628,22 @@ class _VistaConfiguracionState extends State<VistaConfiguracion> {
     required TextEditingController controller,
     required String label,
     required IconData icon,
+    String? hint,
     TextInputType keyboardType = TextInputType.text,
     TextCapitalization textCapitalization = TextCapitalization.none,
     List<TextInputFormatter>? inputFormatters,
+    FormFieldValidator<String>? validator,
   }) {
     return TextFormField(
       controller: controller,
       keyboardType: keyboardType,
       textCapitalization: textCapitalization,
       inputFormatters: inputFormatters,
+      validator: validator,
       style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w500),
       decoration: InputDecoration(
         labelText: label, labelStyle: GoogleFonts.poppins(color: Colors.grey[500], fontSize: 14),
+        hintText: hint, hintStyle: GoogleFonts.poppins(color: Colors.grey[400], fontSize: 13),
         prefixIcon: Icon(icon, color: primaryRed, size: 20),
         filled: true, fillColor: const Color(0xFFF8F9FA),
         contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
