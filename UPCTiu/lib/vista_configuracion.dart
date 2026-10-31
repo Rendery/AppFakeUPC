@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'fuentes.dart';
 
 // --- FORMATTER PARA MAYÚSCULAS AUTOMÁTICAS ---
 class UpperCaseTextFormatter extends TextInputFormatter {
@@ -129,7 +130,7 @@ class _VistaConfiguracionState extends State<VistaConfiguracion> {
     final prefs = await SharedPreferences.getInstance();
     final List<String>? plantillasJson = prefs.getStringList('plantillasGuardadas');
 
-    if (plantillasJson != null) {
+    if (plantillasJson != null && mounted) {
       setState(() {
         _plantillas = plantillasJson
             .map((jsonStr) => PerfilPlantilla.fromJson(jsonDecode(jsonStr)))
@@ -366,8 +367,8 @@ class _VistaConfiguracionState extends State<VistaConfiguracion> {
                             radius: 65,
                             backgroundColor: Colors.grey[200],
                             backgroundImage: _selectedImage != null
-                                ? FileImage(_selectedImage!)
-                                : const AssetImage('assets/profile_picture.jpg') as ImageProvider,
+                                ? ResizeImage(FileImage(_selectedImage!), width: 260)
+                                : const ResizeImage(AssetImage('assets/profile_picture.jpg'), width: 260),
                           ),
                         ),
                         GestureDetector(
@@ -437,7 +438,7 @@ class _VistaConfiguracionState extends State<VistaConfiguracion> {
                         Center(
                           child: Text(
                             _nameController.text.isEmpty ? "VISTA PREVIA" : _nameController.text.toUpperCase(),
-                            style: GoogleFonts.oswald(color: primaryRed, fontSize: _nameSize, fontWeight: FontWeight.w600),
+                            style: oswald(color: primaryRed, fontSize: _nameSize, fontWeight: FontWeight.w600),
                             textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis,
                           ),
                         ),
