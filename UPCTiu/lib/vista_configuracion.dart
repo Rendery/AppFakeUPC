@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // Importante para las mayúsculas automáticas
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'fuentes.dart';
 import 'perfil.dart';
@@ -245,7 +244,7 @@ class _VistaConfiguracionState extends State<VistaConfiguracion> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text("Perfiles Guardados", style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold)),
+                      Text("Perfiles Guardados", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                       const Divider(),
                       if (_perfiles.isEmpty)
                         Padding(
@@ -253,7 +252,7 @@ class _VistaConfiguracionState extends State<VistaConfiguracion> {
                           child: Text(
                             "Todavía no tienes perfiles.\nGuarda tus datos actuales o importa un archivo.",
                             textAlign: TextAlign.center,
-                            style: GoogleFonts.poppins(color: Colors.grey[600]),
+                            style: TextStyle(color: Colors.grey[600]),
                           ),
                         )
                       else
@@ -507,8 +506,8 @@ class _VistaConfiguracionState extends State<VistaConfiguracion> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text("Tamaño del Nombre", style: GoogleFonts.poppins(color: Colors.grey[700])),
-                              Text("${_nameSize.toInt()} pt", style: GoogleFonts.poppins(fontWeight: FontWeight.bold, color: primaryRed)),
+                              Text("Tamaño del Nombre", style: TextStyle(color: Colors.grey[700])),
+                              Text("${_nameSize.toInt()} pt", style: TextStyle(fontWeight: FontWeight.bold, color: primaryRed)),
                             ],
                           ),
                           SliderTheme(
@@ -526,8 +525,8 @@ class _VistaConfiguracionState extends State<VistaConfiguracion> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text("Tamaño de Descripciones", style: GoogleFonts.poppins(color: Colors.grey[700])),
-                              Text("${_descSize.toInt()} pt", style: GoogleFonts.poppins(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+                              Text("Tamaño de Descripciones", style: TextStyle(color: Colors.grey[700])),
+                              Text("${_descSize.toInt()} pt", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
                             ],
                           ),
                           SliderTheme(
@@ -550,7 +549,7 @@ class _VistaConfiguracionState extends State<VistaConfiguracion> {
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
                         ),
                         onPressed: _guardarYSalir,
-                        child: Text('APLICAR AL TIU VIRTUAL', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+                        child: Text('APLICAR AL TIU VIRTUAL', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
                       ),
                     ),
                     if (widget.inicial != null) ...[
@@ -575,7 +574,7 @@ class _VistaConfiguracionState extends State<VistaConfiguracion> {
               child: Center(
                 child: Text(
                   'Personalizar TIU',
-                  style: GoogleFonts.poppins(fontSize: 22, fontWeight: FontWeight.w600, color: Colors.white, letterSpacing: 1.2),
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.w600, color: Colors.white, letterSpacing: 1.2),
                 ),
               ),
             ),
@@ -615,7 +614,7 @@ class _VistaConfiguracionState extends State<VistaConfiguracion> {
           Row(
             children: [
               Icon(icon, color: Colors.grey[600], size: 22), const SizedBox(width: 10),
-              Text(title, style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.bold, color: const Color(0xFF344563))),
+              Text(title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: const Color(0xFF344563))),
             ],
           ),
           const SizedBox(height: 20), child,
@@ -640,10 +639,10 @@ class _VistaConfiguracionState extends State<VistaConfiguracion> {
       textCapitalization: textCapitalization,
       inputFormatters: inputFormatters,
       validator: validator,
-      style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w500),
+      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
       decoration: InputDecoration(
-        labelText: label, labelStyle: GoogleFonts.poppins(color: Colors.grey[500], fontSize: 14),
-        hintText: hint, hintStyle: GoogleFonts.poppins(color: Colors.grey[400], fontSize: 13),
+        labelText: label, labelStyle: TextStyle(color: Colors.grey[500], fontSize: 14),
+        hintText: hint, hintStyle: TextStyle(color: Colors.grey[400], fontSize: 13),
         prefixIcon: Icon(icon, color: primaryRed, size: 20),
         filled: true, fillColor: const Color(0xFFF8F9FA),
         contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),

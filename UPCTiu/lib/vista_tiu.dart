@@ -3,16 +3,38 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'dart:async';
 import 'dart:math';
-import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'fuentes.dart';
 import 'perfil.dart';
 import 'vista_configuracion.dart';
 
+// Imágenes fijas del fondo: el mismo objeto se usa al precargar y al dibujar,
+// así la precarga y el widget comparten la misma entrada de la caché.
+const AssetImage _imgArbol = AssetImage('assets/arbolito.png');
+const AssetImage _imgNube = AssetImage('assets/cloud.png');
+
+// Foto decodificada al tamaño en que se muestra (175 dp), no a resolución completa
+ImageProvider _imgFoto(File file, double dpr) =>
+    ResizeImage.resizeIfNeeded((175 * dpr).round(), null, FileImage(file));
+
+// --- FECHA Y HORA EN ESPAÑOL (sin intl: evita cargar los datos de todos los idiomas al arrancar) ---
+const List<String> _dias = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];
+const List<String> _meses = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sept', 'oct', 'nov', 'dic'];
+
+String _dosDigitos(int n) => n.toString().padLeft(2, '0');
+
+// Ej. 02:08:30
+String formatearHora(DateTime t) => '${_dosDigitos(t.hour)}:${_dosDigitos(t.minute)}:${_dosDigitos(t.second)}';
+
+// Ej. sábado, 31 oct. 2026 (igual que DateFormat('EEEE, d MMM. yyyy', 'es_ES'))
+String formatearFecha(DateTime t) => '${_dias[t.weekday - 1]}, ${t.day} ${_meses[t.month - 1]}. ${t.year}';
+
 class VistaTIU extends StatefulWidget {
   final SharedPreferences prefs;
+  // Si viene, se llama cuando el TIU ya tiene sus imágenes listas para el primer frame
+  final VoidCallback? alEstarListo;
 
-  const VistaTIU({super.key, required this.prefs});
+  const VistaTIU({super.key, required this.prefs, this.alEstarListo});
 
   @override
   State<VistaTIU> createState() => _VistaTIUState();
@@ -27,6 +49,7 @@ class _VistaTIUState extends State<VistaTIU> {
   Perfil? _perfil;
   // Se resuelve una sola vez (no en cada build) para no hacer IO síncrono al dibujar.
   File? _imageFile;
+  bool _precargaIniciada = false;
 
   @override
   void initState() {
@@ -34,6 +57,28 @@ class _VistaTIUState extends State<VistaTIU> {
     // Las preferencias ya vienen cargadas desde main, así que esto es síncrono
     _perfil = PerfilStore.leerActual(widget.prefs);
     _imageFile = _resolverFoto(_perfil?.imagePath);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final alEstarListo = widget.alEstarListo;
+    if (_precargaIniciada || alEstarListo == null) return;
+    _precargaIniciada = true;
+    _precargarImagenes().whenComplete(alEstarListo);
+  }
+
+  // Decodifica foto, árbol y nube antes de liberar el primer frame, para que el TIU
+  // aparezca completo de una vez. Nunca retrasa más de 400 ms aunque algo falle.
+  Future<void> _precargarImagenes() {
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    final imagenes = <ImageProvider>[
+      _imgArbol,
+      _imgNube,
+      if (_imageFile != null) _imgFoto(_imageFile!, dpr),
+    ];
+    return Future.wait(imagenes.map((img) => precacheImage(img, context, onError: (_, __) {})))
+        .timeout(const Duration(milliseconds: 400), onTimeout: () => const []);
   }
 
   File? _resolverFoto(String? path) {
@@ -86,27 +131,22 @@ class _VistaTIUState extends State<VistaTIU> {
     final screenHeight = MediaQuery.sizeOf(context).height;
     final dpr = MediaQuery.devicePixelRatioOf(context);
     final photoTopPosition = screenHeight * 0.38;
-    // Decodificamos la foto al tamaño en que se muestra (175 dp), no a resolución completa:
-    // una foto de galería de 12 MP tardaba muchísimo en decodificarse al abrir.
-    final photoCacheSize = (175 * dpr).round();
     final perfil = _perfil;
 
     return Scaffold(
       backgroundColor: const Color(0xFFFBFBFB),
       body: Stack(
         children: [
-          Positioned(
+          const Positioned(
             bottom: 120,
             left: 0,
             right: 0,
-            child: Opacity(
-              opacity: 0.3,
-              child: Image.asset(
-                'assets/arbolito.png',
-                height: 350,
-                cacheHeight: (350 * dpr).round(),
-                fit: BoxFit.contain,
-              ),
+            // opacity del propio Image: se aplica al pintar, sin capa extra de Opacity
+            child: Image(
+              image: _imgArbol,
+              height: 350,
+              fit: BoxFit.contain,
+              opacity: AlwaysStoppedAnimation(0.3),
             ),
           ),
           const _NubesAnimadas(),
@@ -173,11 +213,10 @@ class _VistaTIUState extends State<VistaTIU> {
             child: Center(
               child: ClipOval(
                 child: _imageFile != null
-                    ? Image.file(
-                  _imageFile!,
+                    ? Image(
+                  image: _imgFoto(_imageFile!, dpr),
                   width: 175,
                   height: 175,
-                  cacheWidth: photoCacheSize,
                   fit: BoxFit.cover,
                 )
                     : Container(
@@ -303,33 +342,42 @@ class _RelojTIU extends StatefulWidget {
 }
 
 class _RelojTIUState extends State<_RelojTIU> {
-  final DateFormat _timeFormat = DateFormat('HH:mm:ss');
-  final DateFormat _dateFormat = DateFormat('EEEE, d MMM. yyyy', 'es_ES');
   // Roboto es la fuente del sistema en Android: no hace falta empaquetarla.
   static const TextStyle _timeStyle =
       TextStyle(fontFamily: 'Roboto', fontSize: 42, fontWeight: FontWeight.w400, color: Colors.black);
 
-  late final Timer _timer;
-  String _currentTime = '';
-  String _currentDate = '';
+  Timer? _timer;
+  late String _currentTime;
+  late String _currentDate;
 
   @override
   void initState() {
     super.initState();
-    _updateTime();
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) => _updateTime());
+    final now = DateTime.now();
+    _currentTime = formatearHora(now);
+    _currentDate = formatearFecha(now);
+    _programarTick();
   }
 
   @override
   void dispose() {
-    _timer.cancel();
+    _timer?.cancel();
     super.dispose();
+  }
+
+  // Cada tick cae justo al cambiar el segundo, así el reloj no se atrasa ni salta segundos
+  void _programarTick() {
+    final now = DateTime.now();
+    _timer = Timer(Duration(milliseconds: 1000 - now.millisecond), () {
+      _updateTime();
+      _programarTick();
+    });
   }
 
   void _updateTime() {
     final now = DateTime.now();
-    final time = _timeFormat.format(now);
-    final date = _dateFormat.format(now);
+    final time = formatearHora(now);
+    final date = formatearFecha(now);
     if (!mounted || (time == _currentTime && date == _currentDate)) return;
     setState(() {
       _currentTime = time;
@@ -396,20 +444,16 @@ class _NubesAnimadasState extends State<_NubesAnimadas> with SingleTickerProvide
   @override
   Widget build(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
-    final dpr = MediaQuery.devicePixelRatioOf(context);
     // Las nubes salen por la izquierda en -130 y reaparecen a la derecha en width + 100.
     final span = width + 230;
 
-    // Las imágenes no cambian: se construyen una vez y solo se desplazan.
+    // Las imágenes no cambian: se construyen una vez y solo se desplazan. Las 6 usan
+    // la misma imagen decodificada (148x48 px) y la opacidad se aplica al pintar.
     final clouds = List.generate(_cloudCount, (index) {
-      final cloudWidth = _cloudBaseSize + (index * _cloudSizeVariation);
-      return Opacity(
-        opacity: 0.4,
-        child: Image.asset(
-          'assets/cloud.png',
-          width: cloudWidth,
-          cacheWidth: (cloudWidth * dpr).round(),
-        ),
+      return Image(
+        image: _imgNube,
+        width: _cloudBaseSize + (index * _cloudSizeVariation),
+        opacity: const AlwaysStoppedAnimation(0.4),
       );
     });
 

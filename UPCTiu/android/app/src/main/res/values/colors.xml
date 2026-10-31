@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Mismo fondo que la pantalla del TIU (0xFFFBFBFB): el paso del splash a la app no se nota -->
+    <color name="fondo_tiu">#FBFBFB</color>
+</resources>

@@ -3,15 +3,13 @@ import 'dart:typed_data';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:upctiu/main.dart';
 import 'package:upctiu/perfil.dart';
+import 'package:upctiu/vista_tiu.dart';
 
 void main() {
-  setUpAll(() => initializeDateFormatting('es_ES', null));
-
   Future<void> abrirApp(WidgetTester tester, Map<String, Object> datos) async {
     SharedPreferences.setMockInitialValues(datos);
     final prefs = await SharedPreferences.getInstance();
@@ -85,5 +83,26 @@ void main() {
 
     final roto = Uint8List.fromList(utf8.encode('no es json'));
     expect(() => PerfilArchivo.decodificar(roto), throwsFormatException);
+  });
+
+  test('Hora y fecha en español con el mismo formato que antes', () {
+    final t = DateTime(2026, 10, 31, 2, 8, 5);
+    expect(formatearHora(t), '02:08:05');
+    expect(formatearFecha(t), 'sábado, 31 oct. 2026');
+    expect(formatearFecha(DateTime(2026, 9, 2)), 'miércoles, 2 sept. 2026');
+    expect(formatearFecha(DateTime(2027, 1, 3)), 'domingo, 3 ene. 2027');
+  });
+
+  testWidgets('Avisa que el TIU está listo para el primer frame', (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues({'userName': 'ANA PÉREZ'});
+    final prefs = await SharedPreferences.getInstance();
+    var avisos = 0;
+
+    await tester.pumpWidget(MyApp(prefs: prefs, alEstarListo: () => avisos++));
+    // Aunque las imágenes no terminen de decodificarse, el aviso llega como máximo a los 400 ms
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(avisos, 1);
+
+    await tester.pumpWidget(const SizedBox());
   });
 }

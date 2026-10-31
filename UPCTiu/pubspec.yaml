@@ -7,11 +7,8 @@ environment:
   sdk: '>=3.3.4 <4.0.0'
 
 dependencies:
-  cupertino_icons: ^1.0.6
-  intl: ^0.20.2
   flutter:
     sdk: flutter
-  google_fonts: ^8.0.2
   image_picker: ^1.1.2
   shared_preferences: ^2.2.2  # <-- NUEVO
   path_provider: ^2.1.2       # <-- NUEVO
@@ -23,16 +20,22 @@ dev_dependencies:
   flutter_lints: ^6.0.0
 
 flutter:
+  # Fuentes declaradas aquí: el motor las registra al arrancar y el primer frame
+  # ya sale con la letra correcta (sin cargas asíncronas ni cambio de fuente).
   fonts:
-    - family: bahnschrift
+    - family: Poppins
       fonts:
-        - asset: assets/fonts/bahnschrift.ttf
+        - asset: assets/fonts/Poppins-Regular.ttf
+        - asset: assets/fonts/Poppins-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Poppins-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Poppins-Bold.ttf
+          weight: 700
     - family: Oswald
       fonts:
         - asset: assets/fonts/Oswald.ttf
   uses-material-design: true
   assets:
-    # Poppins empaquetada: google_fonts la toma de aquí sin descargar nada
-    - assets/google_fonts/
     - assets/cloud.png
     - assets/arbolito.png
